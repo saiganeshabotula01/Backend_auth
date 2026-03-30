@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify
 from extensions import db
-from models import User
+from models import User, Task
 import bcrypt
 from dotenv import load_dotenv
 import os
@@ -17,7 +17,7 @@ load_dotenv()
 
 app = Flask(__name__)
 
-# 🔥 CONFIG FROM .env
+#  CONFIG FROM .env
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv("DB_URI")
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET_KEY")
@@ -87,59 +87,64 @@ def login():
 
 
 # =========================
-# CREATE (optional)
+# CREATE 
 # =========================
-@app.route("/add_user", methods=["POST"])
-@jwt_required()
-def add_user():
-    data = request.json
 
-    hashed_password = bcrypt.hashpw(
-        data["password"].encode('utf-8'), bcrypt.gensalt()
-    )
 
-    new_user = User(
-        name=data["name"],
-        age=data["age"],
-        dept=data["dept"],
-        salary=data["salary"],
-        password=hashed_password.decode('utf-8')
-    )
+# @app.route("/add_user", methods=["POST"])
+# @jwt_required()
+# def add_user():
+#     data = request.json
 
-    db.session.add(new_user)
-    db.session.commit()
+#     hashed_password = bcrypt.hashpw(
+#         data["password"].encode('utf-8'), bcrypt.gensalt()
+#     )
 
-    return jsonify({"message": "User added"})
+#     new_user = User(
+#         name=data["name"],
+#         age=data["age"],
+#         dept=data["dept"],
+#         salary=data["salary"],
+#         password=hashed_password.decode('utf-8')
+#     )
+
+#     db.session.add(new_user)
+#     db.session.commit()
+
+#     return jsonify({"message": "User added"})
+
 
 
 # =========================
 # READ
 # =========================
-@app.route("/get_users", methods=["GET"])
+@app.route("/me", methods=["GET"])
 @jwt_required()
-def get_users():
-    users = User.query.all()
+def get_my_data():
+    user_id = get_jwt_identity()
 
-    result = []
-    for user in users:
-        result.append({
-            "id": user.id,
-            "name": user.name,
-            "age": user.age,
-            "dept": user.dept,
-            "salary": user.salary
-        })
+    user = db.session.get(User, int(user_id))
 
-    return jsonify(result)
+    if not user:
+        return jsonify({"message": "User not found"}), 404
 
+    return jsonify({
+        "id": user.id,
+        "name": user.name,
+        "age": user.age,
+        "dept": user.dept,
+        "salary": user.salary
+    })
 
 # =========================
 # UPDATE
 # =========================
-@app.route("/update_user/<int:id>", methods=["PUT"])
+@app.route("/update_user", methods=["PUT"])
 @jwt_required()
-def update_user(id):
-    user = db.session.get(User, id)
+def update_user():
+    user_id = get_jwt_identity()
+
+    user = db.session.get(User, int(user_id))
 
     if not user:
         return jsonify({"message": "User not found"}), 404
@@ -165,10 +170,12 @@ def update_user(id):
 # =========================
 # DELETE
 # =========================
-@app.route("/delete_user/<int:id>", methods=["DELETE"])
+@app.route("/delete_user", methods=["DELETE"])
 @jwt_required()
-def delete_user(id):
-    user = db.session.get(User, id)
+def delete_user():
+    user_id = get_jwt_identity()
+
+    user = db.session.get(User, int(user_id))
 
     if not user:
         return jsonify({"message": "User not found"}), 404
@@ -177,6 +184,53 @@ def delete_user(id):
     db.session.commit()
 
     return jsonify({"message": "Deleted"})
+
+
+# =========================
+#   ADD Task
+# =========================
+
+@app.route("/add_task", methods=["POST"])
+@jwt_required()
+def add_task():
+    user_id = get_jwt_identity()
+    data = request.get_json()
+
+    if not data.get("task_num") or not data.get("deadline"):
+        return jsonify({"message": "Missing task data"}), 400
+
+    task = Task(
+        task_num=data["task_num"],
+        deadline=data["deadline"],
+        user_id=int(user_id)
+    )
+
+    db.session.add(task)
+    db.session.commit()
+
+    return jsonify({"message": "Task added"})
+
+
+# =========================
+#   Tasks
+# =========================
+
+@app.route("/my_tasks", methods=["GET"])
+@jwt_required()
+def get_my_tasks():
+    user_id = get_jwt_identity()
+
+    tasks = Task.query.filter_by(user_id=int(user_id)).all()
+
+    result = []
+    for task in tasks:
+        result.append({
+            "id": task.id,
+            "task_num": task.task_num,
+            "deadline": task.deadline
+        })
+
+    return jsonify(result)
 
 
 # =========================
